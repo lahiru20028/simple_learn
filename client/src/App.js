@@ -17,7 +17,8 @@ function App() {
       setResponse(res.data.answer);
     } catch (error) {
       console.error(error);
-      setResponse("Sorry, there was a problem getting the answer.");
+      const errorMessage = error.response?.data?.details || error.response?.data?.error || "Sorry, there was a problem getting the answer.";
+      setResponse(`Error: ${errorMessage}`);
     }
     setLoading(false);
   };

@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ override: true });
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -28,7 +28,7 @@ const Chat = mongoose.model('Chat', chatSchema);
 // Initialize Google Generative AI
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-1.5-flash",
+  model: "gemini-2.5-flash",
   systemInstruction: "You are Simple Learn, a helpful AI tutor. Explain topics simply for students in English."
 });
 
@@ -45,14 +45,25 @@ app.post('/api/chat', async (req, res) => {
     const response = await result.response;
     const text = response.text();
 
-    // Save conversation to MongoDB
-    const chat = new Chat({ question, answer: text });
-    await chat.save();
+    // Save conversation to MongoDB (optional)
+    try {
+      if (mongoose.connection.readyState === 1) {
+        const chat = new Chat({ question, answer: text });
+        await chat.save();
+      } else {
+        console.warn('MongoDB not connected, skipping save');
+      }
+    } catch (dbError) {
+      console.error('Failed to save chat to MongoDB:', dbError);
+    }
 
     res.json({ answer: text });
   } catch (error) {
-    console.error('Error generating content:', error);
-    res.status(500).json({ error: 'Failed to generate response' });
+    console.error('Error generating content from Gemini:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate response',
+      details: error.message 
+    });
   }
 });
 

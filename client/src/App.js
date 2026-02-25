@@ -1,57 +1,144 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
 
 function App() {
+  const [messages, setMessages] = useState([
+    {
+      id: 0,
+      text: "Hello! I'm Simple Learn AI. How can I help you learn today? Feel free to ask me anything about any topic.",
+      sender: 'assistant'
+    }
+  ]);
   const [input, setInput] = useState('');
-  const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
 
-  const askTeacher = async () => {
-    if (!input) return;
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+
+    // Add user message
+    const userMessage = {
+      id: messages.length,
+      text: input,
+      sender: 'user'
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
     setLoading(true);
-    setResponse(''); // Clear previous response
+
     try {
       // Connecting to backend
       const res = await axios.post('http://localhost:5000/api/chat', { question: input });
-      setResponse(res.data.answer);
+      const assistantMessage = {
+        id: messages.length + 1,
+        text: res.data.answer,
+        sender: 'assistant'
+      };
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error(error);
       const errorMessage = error.response?.data?.details || error.response?.data?.error || "Sorry, there was a problem getting the answer.";
-      setResponse(`Error: ${errorMessage}`);
+      const errorResponse = {
+        id: messages.length + 1,
+        text: `Error: ${errorMessage}`,
+        sender: 'assistant'
+      };
+      setMessages(prev => [...prev, errorResponse]);
     }
     setLoading(false);
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const clearChat = () => {
+    setMessages([
+      {
+        id: 0,
+        text: "Hello! I'm Simple Learn AI. How can I help you learn today? Feel free to ask me anything about any topic.",
+        sender: 'assistant'
+      }
+    ]);
+  };
+
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>Simple Learn 🎓</h1>
-        <p>AI Assistant for Students</p>
-      </header>
-      
-      <div className="chat-container" style={{ padding: '20px', maxWidth: '600px', margin: 'auto' }}>
-        <textarea 
-          style={{ width: '100%', height: '100px', borderRadius: '8px', padding: '10px' }}
-          placeholder="Type the topic you want to learn here..." 
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <br />
-        <button 
-          onClick={askTeacher} 
-          disabled={loading}
-          style={{ marginTop: '10px', padding: '10px 20px', cursor: 'pointer', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '5px' }}
-        >
-          {loading ? "Thinking..." : "Ask Teacher"}
+      <div className="chat-sidebar">
+        <div className="sidebar-header">
+          <h2>📚 Simple Learn</h2>
+        </div>
+        <button className="new-chat-btn" onClick={clearChat}>
+          ➕ New Chat
         </button>
+        <div className="sidebar-footer">
+          <p>AI-powered educational assistant</p>
+        </div>
+      </div>
 
-        {response && (
-          <div className="response-box" style={{ marginTop: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '8px', textAlign: 'left', backgroundColor: '#f9f9f9' }}>
-            <h3 style={{ color: '#007bff' }}>Simple Learn's Answer:</h3>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{response}</p>
+      <div className="chat-main">
+        <div className="chat-header">
+          <h1>Simple Learn</h1>
+          <p>AI Assistant for Students</p>
+        </div>
+
+        <div className="messages-container">
+          {messages.map((message) => (
+            <div key={message.id} className={`message ${message.sender}`}>
+              <div className="message-avatar">
+                {message.sender === 'assistant' ? '🤖' : '👤'}
+              </div>
+              <div className="message-bubble">
+                <p>{message.text}</p>
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="message assistant">
+              <div className="message-avatar">🤖</div>
+              <div className="message-bubble loading">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="chat-input-area">
+          <div className="input-wrapper">
+            <textarea
+              className="input-field"
+              placeholder="Ask me anything... (Shift + Enter for new line, Enter to send)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              disabled={loading}
+            />
+            <button
+              className="send-btn"
+              onClick={sendMessage}
+              disabled={loading || !input.trim()}
+              title="Send message"
+            >
+              ➤
+            </button>
           </div>
-        )}
+          <p className="input-hint">Press Enter to send, Shift + Enter for new line</p>
+        </div>
       </div>
     </div>
   );

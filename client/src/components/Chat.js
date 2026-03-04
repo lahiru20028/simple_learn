@@ -3,29 +3,32 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 
 function Chat({ user, onLogout }) {
-  const [messages, setMessages] = useState([
-    {
-      id: 0,
-      text: `Hello${user ? ' ' + user.username : ''}! I'm Simple Learn AI. How can I help you learn today? Feel free to ask me anything about any topic.`,
-      sender: 'assistant'
-    }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(null);
   const messagesEndRef = useRef(null);
-  const userMenuRef = useRef(null);
 
-  // Close user menu when clicking outside
+  const getWelcomeMessage = () => ({
+    id: 'welcome',
+    text: `Hello${user ? ' ' + user.username : ''}! I'm Simple Learn AI. How can I help you learn today? Feel free to ask me anything about any topic.`,
+    sender: 'assistant'
+  });
+
+  // Load conversations on mount
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
-        setShowUserMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    if (user) {
+      fetchConversations();
+    }
+  }, [user]);
+
+  // Set welcome message when no active conversation
+  useEffect(() => {
+    if (!activeConversationId) {
+      setMessages([getWelcomeMessage()]);
+    }
+  }, [activeConversationId, user]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,6 +37,60 @@ function Chat({ user, onLogout }) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const fetchConversations = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/conversations', {
+        headers: getAuthHeaders()
+      });
+      setConversations(res.data);
+    } catch (error) {
+      console.error('Failed to fetch conversations:', error);
+    }
+  };
+
+  const loadConversation = async (convId) => {
+    try {
+      const res = await axios.get(`http://localhost:5000/api/conversations/${convId}`, {
+        headers: getAuthHeaders()
+      });
+      const conv = res.data;
+      setActiveConversationId(conv._id);
+      const loadedMessages = conv.messages.map((msg, index) => ({
+        id: index,
+        text: msg.content,
+        sender: msg.role === 'user' ? 'user' : 'assistant'
+      }));
+      setMessages(loadedMessages);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  };
+
+  const deleteConversation = async (convId, e) => {
+    e.stopPropagation();
+    try {
+      await axios.delete(`http://localhost:5000/api/conversations/${convId}`, {
+        headers: getAuthHeaders()
+      });
+      setConversations(prev => prev.filter(c => c._id !== convId));
+      if (activeConversationId === convId) {
+        setActiveConversationId(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    }
+  };
+
+  const startNewChat = () => {
+    setActiveConversationId(null);
+    setMessages([getWelcomeMessage()]);
+  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -44,24 +101,37 @@ function Chat({ user, onLogout }) {
       sender: 'user'
     };
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      
-      const res = await axios.post('http://localhost:5000/api/chat', 
-        { question: input },
-        { headers }
+      const res = await axios.post('http://localhost:5000/api/chat',
+        {
+          question: currentInput,
+          conversationId: activeConversationId
+        },
+        { headers: getAuthHeaders() }
       );
-      
+
       const assistantMessage = {
         id: messages.length + 1,
         text: res.data.answer,
         sender: 'assistant'
       };
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Update conversation tracking
+      if (res.data.conversationId) {
+        if (!activeConversationId) {
+          // New conversation was created
+          setActiveConversationId(res.data.conversationId);
+        }
+        // Refresh conversation list
+        if (user) {
+          fetchConversations();
+        }
+      }
     } catch (error) {
       console.error(error);
       const errorMessage = error.response?.data?.details || error.response?.data?.error || "Sorry, there was a problem getting the answer.";
@@ -82,40 +152,57 @@ function Chat({ user, onLogout }) {
     }
   };
 
-  const clearChat = () => {
-    setMessages([
-      {
-        id: 0,
-        text: `Hello${user ? ' ' + user.username : ''}! I'm Simple Learn AI. How can I help you learn today? Feel free to ask me anything about any topic.`,
-        sender: 'assistant'
-      }
-    ]);
-  };
-
   return (
     <div className="App">
       <div className="chat-sidebar">
         <div className="sidebar-header">
           <h2>📚 Simple Learn</h2>
         </div>
-        <button className="new-chat-btn" onClick={clearChat}>
+        <button className="new-chat-btn" onClick={startNewChat}>
           ➕ New Chat
         </button>
-        
+
         {user && (
-          <div className="user-info">
-            <div className="user-profile-header">
-              <div className="profile-icon">
-                {user.username.charAt(0).toUpperCase()}
+          <div className="conversation-list">
+            {conversations.map((conv) => (
+              <div
+                key={conv._id}
+                className={`conversation-item ${activeConversationId === conv._id ? 'active' : ''}`}
+                onClick={() => loadConversation(conv._id)}
+              >
+                <span className="conversation-title">{conv.title}</span>
+                <button
+                  className="conversation-delete-btn"
+                  onClick={(e) => deleteConversation(conv._id, e)}
+                  title="Delete conversation"
+                >
+                  🗑️
+                </button>
               </div>
-              <strong>{user.username}</strong>
-            </div>
-            <button className="logout-btn" onClick={onLogout}>Logout</button>
+            ))}
           </div>
         )}
 
+        <div className="sidebar-spacer"></div>
+
         <div className="sidebar-footer">
-          <p>AI-powered educational assistant</p>
+          {user ? (
+            <div className="sidebar-user-section">
+              <div className="sidebar-user-profile">
+                <div className="sidebar-avatar">
+                  {user.username.charAt(0).toUpperCase()}
+                </div>
+                <span className="sidebar-username">{user.username}</span>
+              </div>
+              <button className="sidebar-logout-btn" onClick={onLogout} title="Logout">
+                ⏻
+              </button>
+            </div>
+          ) : (
+            <div className="sidebar-guest-section">
+              <Link to="/login" className="sidebar-login-btn">Login</Link>
+            </div>
+          )}
         </div>
       </div>
 
@@ -125,31 +212,11 @@ function Chat({ user, onLogout }) {
             <h1>Simple Learn</h1>
             <p>AI Assistant for Students</p>
           </div>
-          <div className="header-user-icon" ref={userMenuRef}>
+          <div className="header-user-icon">
             {user ? (
-              <>
-                <button
-                  className="header-avatar-btn"
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  title={user.username}
-                >
-                  {user.username.charAt(0).toUpperCase()}
-                </button>
-                {showUserMenu && (
-                  <div className="header-user-dropdown">
-                    <div className="dropdown-user-info">
-                      <div className="dropdown-avatar">
-                        {user.username.charAt(0).toUpperCase()}
-                      </div>
-                      <span>{user.username}</span>
-                    </div>
-                    <hr className="dropdown-divider" />
-                    <button className="dropdown-logout-btn" onClick={onLogout}>
-                      🚪 Logout
-                    </button>
-                  </div>
-                )}
-              </>
+              <div className="header-avatar-btn" title={user.username}>
+                {user.username.charAt(0).toUpperCase()}
+              </div>
             ) : (
               <Link to="/login" className="header-avatar-btn header-avatar-guest" title="Login">
                 👤

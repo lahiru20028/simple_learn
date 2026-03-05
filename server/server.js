@@ -24,10 +24,10 @@ mongoose.connect(process.env.MONGO_URI, {
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err.message));
 
-// Initialize DeepSeek AI (OpenAI-compatible)
+// Initialize OpenRouter AI (OpenAI-compatible)
 const openai = new OpenAI({
-  baseURL: 'https://api.deepseek.com',
-  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY,
 });
 const SYSTEM_PROMPT = "You are Simple Learn, a helpful AI tutor. Explain topics simply for students in English.";
 
@@ -178,7 +178,7 @@ app.post('/api/chat', optionalAuth, async (req, res) => {
     }
 
     const completion = await openai.chat.completions.create({
-      model: 'deepseek-chat',
+      model: 'deepseek/deepseek-chat-v3-0324',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: question },

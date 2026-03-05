@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import axios from 'axios';
+import Sidebar from './Sidebar';
+import ChatHeader from './ChatHeader';
 
 function Chat({ user, onLogout }) {
   const [messages, setMessages] = useState([]);
@@ -8,6 +9,7 @@ function Chat({ user, onLogout }) {
   const [loading, setLoading] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef(null);
 
   const getWelcomeMessage = () => ({
@@ -124,10 +126,8 @@ function Chat({ user, onLogout }) {
       // Update conversation tracking
       if (res.data.conversationId) {
         if (!activeConversationId) {
-          // New conversation was created
           setActiveConversationId(res.data.conversationId);
         }
-        // Refresh conversation list
         if (user) {
           fetchConversations();
         }
@@ -153,124 +153,121 @@ function Chat({ user, onLogout }) {
   };
 
   return (
-    <div className="App">
-      <div className="chat-sidebar">
-        <div className="sidebar-header">
-          <h2>📚 Simple Learn</h2>
-        </div>
-        <button className="new-chat-btn" onClick={startNewChat}>
-          ➕ New Chat
-        </button>
+    <div className="flex h-screen bg-[#0d0d0d]">
+      {/* Sidebar */}
+      <Sidebar
+        user={user}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onNewChat={startNewChat}
+        onLoadConversation={loadConversation}
+        onDeleteConversation={deleteConversation}
+        onLogout={onLogout}
+        isMobileOpen={sidebarOpen}
+        onCloseMobile={() => setSidebarOpen(false)}
+      />
 
-        {user && (
-          <div className="conversation-list">
-            {conversations.map((conv) => (
-              <div
-                key={conv._id}
-                className={`conversation-item ${activeConversationId === conv._id ? 'active' : ''}`}
-                onClick={() => loadConversation(conv._id)}
-              >
-                <span className="conversation-title">{conv.title}</span>
-                <button
-                  className="conversation-delete-btn"
-                  onClick={(e) => deleteConversation(conv._id, e)}
-                  title="Delete conversation"
-                >
-                  🗑️
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <ChatHeader
+          user={user}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        />
 
-        <div className="sidebar-spacer"></div>
-
-        <div className="sidebar-footer">
-          {user ? (
-            <div className="sidebar-user-section">
-              <div className="sidebar-user-profile">
-                <div className="sidebar-avatar">
-                  {user.username.charAt(0).toUpperCase()}
-                </div>
-                <span className="sidebar-username">{user.username}</span>
-              </div>
-              <button className="sidebar-logout-btn" onClick={onLogout} title="Logout">
-                ⏻
-              </button>
-            </div>
-          ) : (
-            <div className="sidebar-guest-section">
-              <Link to="/login" className="sidebar-login-btn">Login</Link>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="chat-main">
-        <div className="chat-header">
-          <div className="chat-header-content">
-            <h1>Simple Learn</h1>
-            <p>AI Assistant for Students</p>
-          </div>
-          <div className="header-user-icon">
-            {user ? (
-              <div className="header-avatar-btn" title={user.username}>
-                {user.username.charAt(0).toUpperCase()}
-              </div>
-            ) : (
-              <Link to="/login" className="header-avatar-btn header-avatar-guest" title="Login">
-                👤
-              </Link>
-            )}
-          </div>
-        </div>
-
-        <div className="messages-container">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 space-y-5
+          scrollbar-thin scrollbar-thumb-white/10">
           {messages.map((message) => (
-            <div key={message.id} className={`message ${message.sender}`}>
-              <div className="message-avatar">
-                {message.sender === 'assistant' ? '🤖' : '👤'}
+            <div
+              key={message.id}
+              className={`flex gap-3 animate-fade-in
+                ${message.sender === 'user' ? 'justify-end' : 'justify-start'}
+              `}
+            >
+              {/* Assistant avatar (left) */}
+              {message.sender === 'assistant' && (
+                <div className="w-8 h-8 rounded-full bg-[#1a2a3a] flex items-center justify-center flex-shrink-0 mt-1">
+                  <span className="text-base">🤖</span>
+                </div>
+              )}
+
+              {/* Message bubble */}
+              <div
+                className={`max-w-[70%] md:max-w-[65%] px-4 py-3 rounded-2xl text-[15px] leading-relaxed whitespace-pre-wrap break-words
+                  ${message.sender === 'user'
+                    ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-br-md shadow-lg shadow-emerald-500/10'
+                    : 'bg-[#1e1e2e] text-white/85 rounded-bl-md border border-white/5'
+                  }
+                `}
+              >
+                {message.text}
               </div>
-              <div className="message-bubble">
-                <p>{message.text}</p>
-              </div>
+
+              {/* User avatar (right) */}
+              {message.sender === 'user' && (
+                <div className="w-8 h-8 rounded-full bg-emerald-700 flex items-center justify-center flex-shrink-0 mt-1">
+                  <span className="text-base">👤</span>
+                </div>
+              )}
             </div>
           ))}
+
+          {/* Loading indicator */}
           {loading && (
-            <div className="message assistant">
-              <div className="message-avatar">🤖</div>
-              <div className="message-bubble loading">
-                <span></span>
-                <span></span>
-                <span></span>
+            <div className="flex gap-3 justify-start">
+              <div className="w-8 h-8 rounded-full bg-[#1a2a3a] flex items-center justify-center flex-shrink-0">
+                <span className="text-base">🤖</span>
+              </div>
+              <div className="bg-[#1e1e2e] border border-white/5 px-5 py-3.5 rounded-2xl rounded-bl-md flex gap-1.5 items-center">
+                <span className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '300ms' }}></span>
               </div>
             </div>
           )}
+
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="chat-input-area">
-          <div className="input-wrapper">
+        {/* Input Area */}
+        <div className="px-4 md:px-8 py-4 bg-[#0d0d0d] border-t border-white/5">
+          <div className="flex gap-3 items-end bg-[#1e1e2e] border border-white/10
+            rounded-2xl px-4 py-2 transition-all duration-200
+            focus-within:border-emerald-500/50 focus-within:shadow-lg focus-within:shadow-emerald-500/5">
             <textarea
-              className="input-field"
-              placeholder="Ask me anything... (Shift + Enter for new line, Enter to send)"
+              className="flex-1 bg-transparent border-none outline-none resize-none
+                text-white/90 text-[15px] py-2.5 placeholder-white/25
+                max-h-[150px] font-[inherit]"
+              placeholder="Ask me anything... (Enter to send, Shift+Enter for new line)"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               disabled={loading}
+              rows={1}
             />
             <button
-              className="send-btn"
               onClick={sendMessage}
               disabled={loading || !input.trim()}
+              className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500
+                disabled:bg-white/5 disabled:text-white/20
+                text-white transition-all duration-200
+                hover:shadow-lg hover:shadow-emerald-500/20
+                disabled:shadow-none disabled:cursor-not-allowed
+                active:scale-95 flex-shrink-0"
               title="Send message"
             >
-              ➤
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
             </button>
           </div>
+
           {!user && (
-            <p className="login-prompt">
-              <Link to="/login">Login</Link> to save your chat history!
+            <p className="text-center text-white/30 text-xs mt-3">
+              <a href="/login" className="text-emerald-400 hover:text-emerald-300 font-medium">Login</a>
+              {' '}to save your chat history
             </p>
           )}
         </div>

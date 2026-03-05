@@ -28,8 +28,43 @@ mongoose.connect(process.env.MONGO_URI, {
 const openai = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY,
+  defaultHeaders: {
+    'HTTP-Referer': 'http://localhost:3000',
+    'X-Title': 'Simple Learn',
+  },
 });
+const AI_MODELS = [
+  'google/gemma-3-27b-it:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'mistralai/mistral-small-3.1-24b-instruct:free',
+  'google/gemma-3-12b-it:free',
+  'qwen/qwen3-4b:free',
+];
 const SYSTEM_PROMPT = "You are Simple Learn, a helpful AI tutor. Explain topics simply for students in English.";
+
+// Try multiple free models with fallback on rate limit or transient errors
+async function getAIResponse(messages) {
+  console.log('API Key loaded (first 25):', process.env.OPENROUTER_API_KEY?.substring(0, 25));
+  let lastError = null;
+  for (const model of AI_MODELS) {
+    try {
+      console.log(`Trying model: ${model}`);
+      const completion = await openai.chat.completions.create({ model, messages });
+      console.log(`Success with model: ${model}`);
+      return completion.choices[0].message.content;
+    } catch (err) {
+      lastError = err;
+      console.log(`Failed on ${model}: status=${err.status}, message=${err.error?.message || err.message}`);
+      if (err.status === 429 || err.status === 401 || err.status === 503) {
+        // Retry on rate limit, transient auth errors, or service unavailable
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError || new Error('All free models failed. Please try again in a moment.');
+}
 
 // Auth Middleware
 const authenticateToken = (req, res, next) => {
@@ -177,14 +212,10 @@ app.post('/api/chat', optionalAuth, async (req, res) => {
       return res.status(400).json({ error: 'Question is required' });
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'deepseek/deepseek-chat-v3-0324',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: question },
-      ],
-    });
-    const text = completion.choices[0].message.content;
+    const text = await getAIResponse([
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: question },
+    ]);
 
     let savedConversationId = conversationId || null;
 
